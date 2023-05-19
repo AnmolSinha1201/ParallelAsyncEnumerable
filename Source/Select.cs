@@ -1,4 +1,6 @@
-public static partial class Helpers
+namespace ParallelAsyncEnumerable;
+
+public static partial class Extensions
 {
 	public static async IAsyncEnumerable<TOut> SelectParallelAsync<TIn, TOut>(
 	this IAsyncEnumerable<TIn> enumerable, Func<TIn, ValueTask<TOut>> predicate)

@@ -1,5 +1,4 @@
-﻿// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
+﻿using ParallelAsyncEnumerable;
 
 var foo =  Enumerable.Range(0, 100)
     .ToAsyncEnumerable()
