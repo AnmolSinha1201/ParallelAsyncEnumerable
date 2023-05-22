@@ -5,7 +5,14 @@ public static partial class Extensions
 	public static async IAsyncEnumerable<TIn> WhereParallelAsync<TIn>(
 	this IAsyncEnumerable<TIn> enumerable, Func<TIn, ValueTask<bool>> predicate)
 	{
-		var sem = new SemaphoreSlim(10, 10);
+		await foreach (var item in enumerable.WhereParallelAsync(ParallelAsyncOptions.Default(), predicate))
+			yield return item;
+	}
+
+	public static async IAsyncEnumerable<TIn> WhereParallelAsync<TIn>(
+	this IAsyncEnumerable<TIn> enumerable, ParallelAsyncOptions options, Func<TIn, ValueTask<bool>> predicate)
+	{
+		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
 		var retVal = await enumerable.Select(item => {
 			return Task.Run(async () => {
 				await sem.WaitAsync();
