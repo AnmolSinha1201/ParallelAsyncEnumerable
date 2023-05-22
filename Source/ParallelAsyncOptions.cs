@@ -3,7 +3,7 @@ namespace ParallelAsyncEnumerable;
 public class ParallelAsyncOptions
 {
 	public int MaxDegreeOfParallelism;
-	public CancellationToken Token = default;
+	public CancellationToken CancellationToken = default;
 
 	public static ParallelAsyncOptions Default()
 	{
