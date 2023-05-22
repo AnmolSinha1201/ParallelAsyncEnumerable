@@ -15,13 +15,13 @@ public static partial class Extensions
 		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
 		var retVal = await enumerable.Select(item => {
 			return Task.Run(async () => {
-				await sem.WaitAsync();
-				var retVal = await predicate(item);
+				await sem.WaitAsync().ConfigureAwait(false);
+				var retVal = await predicate(item).ConfigureAwait(false);
 				sem.Release();
 
 				return retVal;
-			}, options.Token);
-		}).ToListAsync(options.Token);
+			}, options.Token).ConfigureAwait(false);
+		}).ToListAsync(options.Token).ConfigureAwait(false);
 
 		foreach (var item in retVal)
 			yield return await item;	
