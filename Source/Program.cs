@@ -5,12 +5,14 @@ var foo =  Enumerable.Range(0, 100)
     .SelectParallelAsync(async i =>
     {
         Console.WriteLine($"In Select 1 : {i}");
+        // Thread.Sleep(1000);
         await Task.Delay(1000);
         return i + 5;
     })
     .WhereParallelAsync(async i =>
     {
         Console.WriteLine($"In Where 2 : {i}");
+        // Thread.Sleep(1000);
         await Task.Delay(1000);
         return i % 2 == 0;
     });

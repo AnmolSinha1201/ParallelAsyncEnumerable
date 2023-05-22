@@ -18,11 +18,10 @@ public static partial class Extensions
 	this IAsyncEnumerable<TIn> enumerable, ParallelAsyncOptions options, Func<TIn, ValueTask<bool>> predicate)
 	{
 		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
-		var retVal = await enumerable.Select(item => {
-			
+		var retVal = await enumerable.Select(async item => {
+			await sem.WaitAsync().ConfigureAwait(false);
 
 			return Task.Run(async () => {
-				await sem.WaitAsync().ConfigureAwait(false);
 				var predicatedValue = await predicate(item).ConfigureAwait(false);
 				sem.Release();
 
@@ -32,7 +31,7 @@ public static partial class Extensions
 
 		foreach (var filterableTask in retVal)
 		{
-			var filterableItem = await filterableTask;
+			var filterableItem = await (await filterableTask);
 			if (filterableItem.predicatedValue)
 				yield return filterableItem.item;
 		}

@@ -22,7 +22,8 @@
 	the threads are freed and we still wait for the tasks to be completed. 
 
 	We can also avoid creating unnecessary tasks creating tasks only when the semaphore has been acquired. The amount of
-	tasks created can indirectly be controlled using MaxDegreeOfParallelism.
+	tasks created can indirectly be controlled using MaxDegreeOfParallelism. This however has an unpleasant side effect
+	of chaining awaits during enumeration.
 	*/
 
 
