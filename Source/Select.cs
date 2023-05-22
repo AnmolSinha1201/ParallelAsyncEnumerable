@@ -13,14 +13,13 @@ public static partial class Extensions
 	this IAsyncEnumerable<TIn> enumerable, ParallelAsyncOptions options, Func<TIn, ValueTask<TOut>> predicate)
 	{
 		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
-		var retVal = await enumerable.Select(item => {
-			return Task.Run(async () => {
-				await sem.WaitAsync().ConfigureAwait(false);
-				var retVal = await predicate(item).ConfigureAwait(false);
-				sem.Release();
+		var retVal = await enumerable.Select(async item => 
+		{
+			await sem.WaitAsync().ConfigureAwait(false);
+			var retVal = await predicate(item).ConfigureAwait(false);
+			sem.Release();
 
-				return retVal;
-			}, options.Token).ConfigureAwait(false);
+			return retVal;
 		}).ToListAsync(options.Token).ConfigureAwait(false);
 
 		foreach (var item in retVal)
