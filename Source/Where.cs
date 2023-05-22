@@ -22,17 +22,17 @@ public static partial class Extensions
 			await sem.WaitAsync().ConfigureAwait(false);
 
 			return Task.Run(async () => {
-				var predicatedValue = await predicate(item).ConfigureAwait(false);
+				var predicatedBool = await predicate(item).ConfigureAwait(false);
 				sem.Release();
 
-				return (item, predicatedValue);
+				return (item, predicatedBool);
 			}).ConfigureAwait(false);
 		}).ToListAsync().ConfigureAwait(false);
 
 		foreach (var filterableTask in retVal)
 		{
 			var filterableItem = await (await filterableTask);
-			if (filterableItem.predicatedValue)
+			if (filterableItem.predicatedBool)
 				yield return filterableItem.item;
 		}
 	}
