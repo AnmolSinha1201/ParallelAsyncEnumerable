@@ -22,10 +22,14 @@ public static partial class Extensions
 			await sem.WaitAsync(options.CancellationToken).ConfigureAwait(false);
 
 			return Task.Run(async () => {
-				var retVal = await predicate(item).ConfigureAwait(false);
-				sem.Release();
-
-				return retVal;
+				try
+				{
+					var retVal = await predicate(item).ConfigureAwait(false);
+					return retVal;
+				}
+				catch { throw; }
+				finally { sem.Release(); }
+				
 			}, options.CancellationToken).ConfigureAwait(false);
 		})
 		.ToListAsync(options.CancellationToken)
