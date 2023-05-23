@@ -2,6 +2,12 @@
 
 var foo =  Enumerable.Range(0, 100)
     .ToAsyncEnumerable()
+    .SelectAwait(async i => {
+        Console.WriteLine($"Generating {i}");
+        if (i % 20 == 0)
+            await Task.Delay(1000);
+        return i;
+    })
     .SelectParallelAsync(async i =>
     {
         Console.WriteLine($"In Select 1 : {i}");
