@@ -1,45 +1,60 @@
+using System.Threading.Channels;
+
 namespace ParallelAsyncEnumerable;
 
 public static partial class Extensions
 {
-	/*
-	NOTE : About launching tasks from the enumerable (refer to General Notes)
-	NOTE : About SynchronizationContext (ConfigureAwait) (refer to General Notes)
-	*/
-
 	public static async IAsyncEnumerable<TIn> WhereParallelAsync<TIn>(
 	this IAsyncEnumerable<TIn> enumerable, Func<TIn, ValueTask<bool>> predicate)
+	{
+		await foreach (var item in enumerable.WhereParallelAsync(ParallelAsyncOptions.Default(), (ct, item) => predicate(item)))
+			yield return item;
+	}
+
+	public static async IAsyncEnumerable<TIn> WhereParallelAsync<TIn>(
+	this IAsyncEnumerable<TIn> enumerable, Func<CancellationToken, TIn, ValueTask<bool>> predicate)
 	{
 		await foreach (var item in enumerable.WhereParallelAsync(ParallelAsyncOptions.Default(), predicate))
 			yield return item;
 	}
 
 	public static async IAsyncEnumerable<TIn> WhereParallelAsync<TIn>(
-	this IAsyncEnumerable<TIn> enumerable, ParallelAsyncOptions options, Func<TIn, ValueTask<bool>> predicate)
+	this IAsyncEnumerable<TIn> enumerable, 
+	ParallelAsyncOptions options, Func<CancellationToken, TIn, ValueTask<bool>> predicate)
 	{
-		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
-		var retVal = await enumerable.Select(async item => {
-			await sem.WaitAsync(options.CancellationToken).ConfigureAwait(false);
-
-			return Task.Run(async () => {
-				try
-				{
-					var predicatedBool = await predicate(item).ConfigureAwait(false);
-					return (item, predicatedBool);
-				}
-				catch { throw; }
-				finally { sem.Release(); }
-				
-			}, options.CancellationToken).ConfigureAwait(false);
-		})
-		.ToListAsync(options.CancellationToken)
-		.ConfigureAwait(false);
-
-		foreach (var filterableTask in retVal)
+		var channel = Channel.CreateUnbounded<Task<(TIn Item, bool PredicatedBool)>>();
+		using SemaphoreSlim semaphore = new(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
+		
+		Task producer = Task.Run(async () =>
 		{
-			var filterableItem = await (await filterableTask);
-			if (filterableItem.predicatedBool)
-				yield return filterableItem.item;
+			try
+			{
+				await foreach (var item in enumerable.WithCancellation(options.CancellationToken).ConfigureAwait(false))
+				{
+					await semaphore.WaitAsync(options.CancellationToken).ConfigureAwait(false);
+					await channel.Writer.WriteAsync(Task.Run(async () => 
+					{
+						try 
+						{ 
+							var predicatedBool =  await predicate(options.CancellationToken, item); 
+							return (item, predicatedBool);
+						}
+						finally { semaphore.Release(); }
+					})) // Without Cancellation
+					.ConfigureAwait(false);
+				}
+			}
+			finally { channel.Writer.TryComplete(); }
+		});
+
+		// Enumeration without cancellation (since we want to finish all enqueued tasks)
+		await foreach (var task in channel.Reader.ReadAllAsync().ConfigureAwait(false))
+		{
+			var result = await task.ConfigureAwait(false);
+			if (result.PredicatedBool)
+				yield return result.Item;
 		}
+				
+		await producer.ConfigureAwait(false);
 	}
 }

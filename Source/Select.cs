@@ -1,41 +1,51 @@
+using System.Threading.Channels;
+
 namespace ParallelAsyncEnumerable;
 
 public static partial class Extensions
 {
-	/*
-	NOTE : About launching tasks from the enumerable (refer to General Notes)
-	NOTE : About SynchronizationContext (ConfigureAwait) (refer to General Notes)
-	*/
-
 	public static async IAsyncEnumerable<TOut> SelectParallelAsync<TIn, TOut>(
 	this IAsyncEnumerable<TIn> enumerable, Func<TIn, ValueTask<TOut>> predicate)
+	{
+		await foreach(var item in enumerable.SelectParallelAsync(ParallelAsyncOptions.Default(), (ct, item) => predicate(item)))
+			yield return item;
+	}
+
+	public static async IAsyncEnumerable<TOut> SelectParallelAsync<TIn, TOut>(
+	this IAsyncEnumerable<TIn> enumerable, Func<CancellationToken, TIn, ValueTask<TOut>> predicate)
 	{
 		await foreach(var item in enumerable.SelectParallelAsync(ParallelAsyncOptions.Default(), predicate))
 			yield return item;
 	}
 
 	public static async IAsyncEnumerable<TOut> SelectParallelAsync<TIn, TOut>(
-	this IAsyncEnumerable<TIn> enumerable, ParallelAsyncOptions options, Func<TIn, ValueTask<TOut>> predicate)
+	this IAsyncEnumerable<TIn> enumerable, 
+	ParallelAsyncOptions options, Func<CancellationToken, TIn, ValueTask<TOut>> predicate)
 	{
-		var sem = new SemaphoreSlim(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
-		var retVal = await enumerable.Select(async item => {
-			await sem.WaitAsync(options.CancellationToken).ConfigureAwait(false);
-
-			return Task.Run(async () => {
-				try
+		var channel = Channel.CreateUnbounded<Task<TOut>>();
+		using SemaphoreSlim semaphore = new(options.MaxDegreeOfParallelism, options.MaxDegreeOfParallelism);
+		
+		Task producer = Task.Run(async () =>
+		{
+			try
+			{
+				await foreach (var item in enumerable.WithCancellation(options.CancellationToken).ConfigureAwait(false))
 				{
-					var retVal = await predicate(item).ConfigureAwait(false);
-					return retVal;
+					await semaphore.WaitAsync(options.CancellationToken).ConfigureAwait(false);
+					await channel.Writer.WriteAsync(Task.Run(async () => 
+					{
+						try { return await predicate(options.CancellationToken, item); }
+						finally { semaphore.Release(); }
+					})) // Without Cancellation
+					.ConfigureAwait(false);
 				}
-				catch { throw; }
-				finally { sem.Release(); }
-				
-			}, options.CancellationToken).ConfigureAwait(false);
-		})
-		.ToListAsync(options.CancellationToken)
-		.ConfigureAwait(false);
+			}
+			finally { channel.Writer.TryComplete(); }
+		});
 
-		foreach (var item in retVal)
-			yield return await (await item);	
+		// Enumeration without cancellation (since we want to finish all enqueued tasks)
+		await foreach (var task in channel.Reader.ReadAllAsync().ConfigureAwait(false))
+				yield return await task.ConfigureAwait(false);
+		await producer.ConfigureAwait(false);
 	}
 }
